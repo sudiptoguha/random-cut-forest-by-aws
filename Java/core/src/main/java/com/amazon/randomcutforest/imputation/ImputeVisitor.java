@@ -32,11 +32,11 @@ import com.amazon.randomcutforest.tree.INodeView;
  * value is the anomaly score for the imputed point.
  */
 public class ImputeVisitor implements MultiVisitor<double[]> {
-    private final boolean[] missing;
-    private final boolean[] liftedMissing;
-    private double[] queryPoint;
-    private double[] liftedPoint;
-    private double rank;
+    protected final boolean[] missing;
+    protected final boolean[] liftedMissing;
+    protected double[] queryPoint;
+    protected double[] liftedPoint;
+    protected double rank;
 
     /**
      * Create a new ImputeVisitor.
@@ -197,11 +197,15 @@ public class ImputeVisitor implements MultiVisitor<double[]> {
     @Override
     public void combine(MultiVisitor<double[]> other) {
         ImputeVisitor visitor = (ImputeVisitor) other;
-        if (visitor.getRank() < rank) {
-            System.arraycopy(visitor.queryPoint, 0, queryPoint, 0, queryPoint.length);
-            System.arraycopy(visitor.liftedPoint, 0, liftedPoint, 0, liftedPoint.length);
-            rank = visitor.getRank();
+        if (visitor.getRank() < getRank()) {
+            copyFrom(visitor);
         }
+    }
+
+    protected void copyFrom(ImputeVisitor visitor) {
+        System.arraycopy(visitor.queryPoint, 0, queryPoint, 0, queryPoint.length);
+        System.arraycopy(visitor.liftedPoint, 0, liftedPoint, 0, liftedPoint.length);
+        rank = visitor.rank;
     }
 
     protected double scoreSeen(int depth, int mass) {

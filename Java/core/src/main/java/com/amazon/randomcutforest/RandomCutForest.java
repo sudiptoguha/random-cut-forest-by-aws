@@ -43,7 +43,7 @@ import com.amazon.randomcutforest.executor.PointStoreCoordinator;
 import com.amazon.randomcutforest.executor.SamplerPlusTree;
 import com.amazon.randomcutforest.executor.SequentialForestTraversalExecutor;
 import com.amazon.randomcutforest.executor.SequentialForestUpdateExecutor;
-import com.amazon.randomcutforest.imputation.ImputeVisitor;
+import com.amazon.randomcutforest.imputation.LikelihoodVisitor;
 import com.amazon.randomcutforest.inspect.NearNeighborVisitor;
 import com.amazon.randomcutforest.interpolation.SimpleInterpolationVisitor;
 import com.amazon.randomcutforest.returntypes.ConvergingAccumulator;
@@ -1023,10 +1023,12 @@ public class RandomCutForest {
      *                              values in the point. The length of the array
      *                              should be greater than or equal to the number of
      *                              missing values.
+     * @param centrality            a control between central (alpha = 1.0) and
+     *                              fully random (alpha = 0)
      * @return A point with the missing values imputed.
      */
-    public ArrayList<double[]> getConditionalCentralField(double[] point, int numberOfMissingValues,
-            int[] missingIndexes) {
+    public ArrayList<double[]> getConditionalField(double[] point, int numberOfMissingValues, int[] missingIndexes,
+            double centrality) {
         checkArgument(numberOfMissingValues > 0, "numberOfMissingValues must be greater than 0");
         checkNotNull(missingIndexes, "missingIndexes must not be null");
         checkArgument(numberOfMissingValues <= missingIndexes.length,
@@ -1036,8 +1038,8 @@ public class RandomCutForest {
             return new ArrayList<>();
         }
 
-        IMultiVisitorFactory<double[]> visitorFactory = (tree, y) -> new ImputeVisitor(y, numberOfMissingValues,
-                tree.projectMissingIndices(transformIndices(missingIndexes, point.length)));
+        IMultiVisitorFactory<double[]> visitorFactory = (tree, y) -> new LikelihoodVisitor(y, numberOfMissingValues,
+                tree.projectMissingIndices(transformIndices(missingIndexes, point.length)), centrality);
 
         Collector<double[], ArrayList<double[]>, ArrayList<double[]>> collector = Collector.of(ArrayList::new,
                 ArrayList::add, (left, right) -> {
@@ -1059,7 +1061,7 @@ public class RandomCutForest {
             return new double[dimensions];
         }
         // checks will be performed in the function call
-        ArrayList<double[]> conditionalField = getConditionalCentralField(point, numberOfMissingValues, missingIndexes);
+        ArrayList<double[]> conditionalField = getConditionalField(point, numberOfMissingValues, missingIndexes, 1.0);
 
         if (numberOfMissingValues == 1) {
             // when there is 1 missing value, we sort all the imputed values and return the
