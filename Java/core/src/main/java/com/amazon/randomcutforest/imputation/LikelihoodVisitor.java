@@ -49,7 +49,7 @@ public class LikelihoodVisitor extends ImputeVisitor {
     public LikelihoodVisitor(double[] liftedPoint, double[] queryPoint, int[] liftedMissingIndexes,
             int[] missingIndexes, double centrality) {
         super(liftedPoint, queryPoint, liftedMissingIndexes, missingIndexes);
-        checkArgument(centrality >= 0 && centrality <= 1, " alha has be [0,1]");
+        checkArgument(centrality >= 0 && centrality <= 1, " centrality has be [0,1]");
         this.centrality = centrality;
     }
 
