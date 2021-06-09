@@ -32,15 +32,18 @@ import com.amazon.randomcutforest.tree.INodeView;
  * value is the anomaly score for the imputed point.
  */
 public class ImputeVisitor implements MultiVisitor<double[]> {
+
+    public static double DEFAULT_INIT_VALUE = Double.MAX_VALUE / 4;
     protected final boolean[] missing;
     protected final boolean[] liftedMissing;
     protected double[] queryPoint;
     protected double[] liftedPoint;
     protected double rank;
+    protected double distance;
 
     /**
      * Create a new ImputeVisitor.
-     * 
+     *
      * @param liftedPoint          The point with missing values we want to impute
      * @param queryPoint           The projected point in the tree space
      * @param liftedMissingIndexes the original missing indices
@@ -71,7 +74,8 @@ public class ImputeVisitor implements MultiVisitor<double[]> {
             liftedMissing[liftedMissingIndexes[i]] = true;
         }
 
-        rank = 10.0;
+        rank = DEFAULT_INIT_VALUE;
+        distance = DEFAULT_INIT_VALUE;
     }
 
     public ImputeVisitor(double[] queryPoint, int[] missingIndexes) {
@@ -94,14 +98,8 @@ public class ImputeVisitor implements MultiVisitor<double[]> {
         this.missing = Arrays.copyOf(original.missing, length);
         this.liftedPoint = Arrays.copyOf(original.liftedPoint, original.liftedPoint.length);
         this.liftedMissing = Arrays.copyOf(original.liftedMissing, original.liftedPoint.length);
-        rank = 10.0;
-    }
-
-    /**
-     * @return the rank of the imputed point in this visitor.
-     */
-    public double getRank() {
-        return rank;
+        rank = Double.MAX_VALUE / 2;
+        distance = Double.MAX_VALUE / 2;
     }
 
     /**
@@ -141,11 +139,16 @@ public class ImputeVisitor implements MultiVisitor<double[]> {
             }
         }
         double[] liftedLeafPoint = leafNode.getLiftedLeafPoint();
+        double squaredDistance = 0;
         for (int i = 0; i < liftedLeafPoint.length; i++) {
             if (liftedMissing[i]) {
                 liftedPoint[i] = liftedLeafPoint[i];
+            } else {
+                double t = (liftedLeafPoint[i] - liftedPoint[i]);
+                squaredDistance += t * t;
             }
         }
+        distance = Math.sqrt(distance);
         double probabilityOfSeparation = CommonUtils.getProbabilityOfSeparation(leafNode.getBoundingBox(), queryPoint);
         if (probabilityOfSeparation <= 0) {
             if (depthOfNode == 0) {
@@ -179,12 +182,24 @@ public class ImputeVisitor implements MultiVisitor<double[]> {
         return missing[node.getCutDimension()];
     }
 
+    public double getRank() {
+        return rank;
+    }
+
+    public double getDistance() {
+        return distance;
+    }
+
     /**
      * @return a copy of this visitor.
      */
     @Override
     public MultiVisitor<double[]> newCopy() {
         return new ImputeVisitor(this);
+    }
+
+    protected boolean updateCombine(ImputeVisitor other) {
+        return other.rank < rank;
     }
 
     /**
@@ -197,15 +212,16 @@ public class ImputeVisitor implements MultiVisitor<double[]> {
     @Override
     public void combine(MultiVisitor<double[]> other) {
         ImputeVisitor visitor = (ImputeVisitor) other;
-        if (visitor.getRank() < getRank()) {
-            copyFrom(visitor);
+        if (updateCombine(visitor)) {
+            updateFrom(visitor);
         }
     }
 
-    protected void copyFrom(ImputeVisitor visitor) {
+    protected void updateFrom(ImputeVisitor visitor) {
         System.arraycopy(visitor.queryPoint, 0, queryPoint, 0, queryPoint.length);
         System.arraycopy(visitor.liftedPoint, 0, liftedPoint, 0, liftedPoint.length);
         rank = visitor.rank;
+        distance = visitor.distance;
     }
 
     protected double scoreSeen(int depth, int mass) {

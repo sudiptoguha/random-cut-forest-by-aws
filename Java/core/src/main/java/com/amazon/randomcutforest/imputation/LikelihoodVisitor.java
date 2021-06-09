@@ -21,43 +21,20 @@ import java.util.Arrays;
 import java.util.Random;
 
 import com.amazon.randomcutforest.MultiVisitor;
-import com.amazon.randomcutforest.anomalydetection.AnomalyScoreVisitor;
 import com.amazon.randomcutforest.tree.INodeView;
 
 /**
- * A LikelihoodVisitor correpsonds to interpreting the anomaly score as a -ve
+ * A LikelihoodVisitor corresponds to interpreting the anomaly score as a -ve
  * log likelihood and for specific values (centrality = 1) considers producing a
- * sample with propotional to exp( - rank). This is is evident in the manner
- * rank is computed, for the partial rank computed for two multivisitors that
+ * sample with proportional to exp( - rank). This is is evident in the manner
+ * rank is computed, for the partial rank computed for two multi-visitors that
  * need to be combined, see below. For centrality = 0.0 this becomes a full
  * random sample. The getRank() produces an interpolation based on this
  * centrality.
  */
 public class LikelihoodVisitor extends ImputeVisitor {
     protected double selectionRank;
-    protected double centrality = 1.0;
-
-    /**
-     * Create a new ImputeVisitor.
-     *
-     * @param liftedPoint          The point with missing values we want to impute
-     * @param queryPoint           The projected point in the tree space
-     * @param liftedMissingIndexes the original missing indices
-     * @param missingIndexes       The indexes of the missing values in the tree
-     *                             space
-     */
-    public LikelihoodVisitor(double[] liftedPoint, double[] queryPoint, int[] liftedMissingIndexes,
-            int[] missingIndexes, double centrality) {
-        super(liftedPoint, queryPoint, liftedMissingIndexes, missingIndexes);
-        checkArgument(centrality >= 0 && centrality <= 1, " centrality has be [0,1]");
-        this.centrality = centrality;
-    }
-
-    public LikelihoodVisitor(double[] queryPoint, int[] missingIndexes, double centrality) {
-        super(queryPoint, missingIndexes);
-        checkArgument(centrality >= 0 && centrality <= 1, " centrality has be [0,1]");
-        this.centrality = centrality;
-    }
+    protected double centrality;
 
     public LikelihoodVisitor(double[] queryPoint, int numberOfMissingIndices, int[] missingIndexes, double centrality) {
         super(queryPoint, Arrays.copyOf(missingIndexes, Math.min(numberOfMissingIndices, missingIndexes.length)));
@@ -68,24 +45,21 @@ public class LikelihoodVisitor extends ImputeVisitor {
     /**
      * A copy constructor which creates a deep copy of the original ImputeVisitor.
      *
-     * @param original
+     * @param original the original visitor
      */
     LikelihoodVisitor(LikelihoodVisitor original) {
         super(original);
         this.centrality = original.centrality;
     }
 
-    /**
-     * @return the rank of the imputed point in this visitor.
-     */
-    public double getRank() {
+    double getcombinedRank() {
         return (1 - centrality) * selectionRank + centrality * rank;
     }
 
     /**
      * Update the rank value using the probability that the imputed query point is
      * separated from this bounding box in a random cut. This step is conceptually
-     * the same as * {@link AnomalyScoreVisitor#accept}.
+     * the same as anomalyScoreVisitor
      *
      * @param node        the node being visited
      * @param depthOfNode the depth of the node being visited
@@ -109,27 +83,6 @@ public class LikelihoodVisitor extends ImputeVisitor {
     }
 
     /**
-     * @return the imputed point.
-     */
-    @Override
-    public double[] getResult() {
-        return liftedPoint;
-    }
-
-    /**
-     * An ImputeVisitor should split whenever the cut dimension in a node
-     * corresponds to a missing value in the query point.
-     *
-     * @param node A node in the tree traversal
-     * @return true if the cut dimension in the node corresponds to a missing value
-     *         in the query point, false otherwise.
-     */
-    @Override
-    public boolean trigger(final INodeView node) {
-        return missing[node.getCutDimension()];
-    }
-
-    /**
      * @return a copy of this visitor.
      */
     @Override
@@ -137,22 +90,21 @@ public class LikelihoodVisitor extends ImputeVisitor {
         return new LikelihoodVisitor(this);
     }
 
-    /**
-     * If this visitor as a lower rank than the second visitor, do nothing.
-     * Otherwise, overwrite this visitor's imputed values withe the valuse from the
-     * second visitor.
-     *
-     * Note the comparison remains valid if the same amount is added to the ranks of
-     * the two LikelihoodVisitors, for the same centrality value.
-     *
-     * @param other A second LikelihoodVisitor
-     */
     @Override
-    public void combine(MultiVisitor<double[]> other) {
+    protected boolean updateCombine(ImputeVisitor other) {
         LikelihoodVisitor visitor = (LikelihoodVisitor) other;
-        if (visitor.getRank() < getRank()) {
-            copyFrom(visitor);
-            selectionRank = visitor.selectionRank;
+        if (visitor.distance < 1.5 * distance && visitor.rank < 1.5 * rank) {
+            if ((distance > 1.5 * visitor.distance && rank > 1.5 * visitor.rank)
+                    || getcombinedRank() > visitor.getcombinedRank()) {
+                return true;
+            }
         }
+        return false;
+    }
+
+    @Override
+    protected void updateFrom(ImputeVisitor visitor) {
+        super.updateFrom(visitor);
+        selectionRank = ((LikelihoodVisitor) visitor).selectionRank;
     }
 }
